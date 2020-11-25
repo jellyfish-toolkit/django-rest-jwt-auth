@@ -1,0 +1,4 @@
+virt/
+.idea/
+__pycache__/
+*.pyc
