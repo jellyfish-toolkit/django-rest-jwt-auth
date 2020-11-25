@@ -1,5 +1,5 @@
 import jwt
-from settings import JWT_SECRET, JWT_ALGORITHM, JWT_ROLE
+from django.conf import settings
 
 
 def prest_signin(request):
