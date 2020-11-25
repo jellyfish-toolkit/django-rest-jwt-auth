@@ -119,3 +119,8 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/3.1/howto/static-files/
 
 STATIC_URL = '/static/'
+
+# Settings for 'django_rest_auth'
+JWT_SECRET = 'super-secret-key'
+JWT_ALGORITHM = 'HS256'
+JWT_ROLE = 'postgres'
