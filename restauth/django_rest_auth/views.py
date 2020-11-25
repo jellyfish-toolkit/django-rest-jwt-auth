@@ -12,22 +12,24 @@ import json
 def _create_jwt(user):
     if user:
         resp = json.dumps({'token': jwt.encode({
-            'role': settings.LOGGED_IN_USER,
+            'role': settings.JWT_ROLE,
             'userid': str(user.id)
-        }, settings.JWT_SECRET, algorithm='HS256').decode('utf-8')})
+        }, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM).decode('utf-8')})
     else:
-        resp = {'token': None}
+        resp = {'token': None}  # TODO maybe return jwt for anon user
     return json.dumps(resp)
 
 
 def prest_signin(request):
-    username = request.POST.get('username')
-    password = request.POST.get('password')
-    user = authenticate(request, username=username, password=password)
-    if user is not None:
-        return HttpResponse(_create_jwt(user))
-    else:
-        return HttpResponse(_create_jwt(user), status=HTTPStatus.UNAUTHORIZED)
+    if request.methpd == 'POST':
+        username = request.POST.get('username')
+        password = request.POST.get('password')
+        user = authenticate(request, username=username, password=password)  # return user model if it exists
+        if user is not None:
+            return HttpResponse(_create_jwt(user))
+        else:
+            return HttpResponse(_create_jwt(user), status=HTTPStatus.UNAUTHORIZED)
+    return HttpResponse('', status=HTTPStatus.METHOD_NOT_ALLOWED)
 
 
 def prest_signup(request):
@@ -41,3 +43,4 @@ def prest_signup(request):
         else:
             user = None
         return HttpResponse(_create_jwt(user))
+    return HttpResponse('', status=HTTPStatus.METHOD_NOT_ALLOWED)
