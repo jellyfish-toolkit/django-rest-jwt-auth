@@ -15,7 +15,10 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path
+from django_rest_auth.views import prest_signin, prest_signup
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('signin/', prest_signin),
+    path('signup/', prest_signup)
 ]

@@ -1,3 +1,8 @@
-from django.shortcuts import render
 
-# Create your views here.
+
+def prest_signin(request):
+    pass
+
+
+def prest_signup(request):
+    pass
