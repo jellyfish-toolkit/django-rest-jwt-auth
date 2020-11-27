@@ -25,12 +25,14 @@ def prest_signin(request):
             return HttpResponse('Data not correctly', status=HTTPStatus.BAD_REQUEST)
 
         username = request_body.get('username')
+        email = request_body.get('email')
         password = request_body.get('password')
-        if not username or not password:
+
+        if not (username or email) or not password:
             return HttpResponse('\'username\' and \'password\' fields are required', 
                                 status=HTTPStatus.BAD_REQUEST)
 
-        user = authenticate(username=username, password=password)
+        user = authenticate(username=username or email, password=password)
         if user is not None:
             return JsonResponse(_create_jwt(user), status=HTTPStatus.OK)
         else:
@@ -47,15 +49,18 @@ def prest_signup(request):
             return HttpResponse('Data not correctly', status=HTTPStatus.BAD_REQUEST)
 
         username = request_body.get('username')
+        email = request_body.get('email')
         password = request_body.get('password')
-        if not username or not password:
-            return HttpResponse('\'username\' and \'password\' fields are required', 
+
+        if not (username or email) or not password:
+            return HttpResponse(f"{'username' if username else 'email'} and 'password' fields are required",
                                 status=HTTPStatus.BAD_REQUEST)
-            
-        if User.objects.filter(username=username).exists():
-            return HttpResponse(f'User \'{username}\' already exists', status=HTTPStatus.BAD_REQUEST)
+
+        if User.objects.filter(username=username or email).exists():
+            return HttpResponse(f'User {"username" if username else "email"} already exists',
+                                status=HTTPStatus.BAD_REQUEST)
         else:
-            user = User(username=username, password=make_password(password))
+            user = User(username=username or email, password=make_password(password))
             user.save()
             return HttpResponse('', status=HTTPStatus.CREATED)
 
