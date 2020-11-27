@@ -124,5 +124,3 @@ STATIC_URL = '/static/'
 JWT_SECRET = 'super-secret-key'
 JWT_ALGORITHM = 'HS256'
 JWT_ROLE = 'postgres'
-
-LOGGED_IN_USER = 'admin'
