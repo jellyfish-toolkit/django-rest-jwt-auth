@@ -1,46 +1,62 @@
 import jwt
-from django.conf import settings
-# JWT_SECRET, JWT_ALGORITHM, JWT_ROLE
-from django.contrib.auth import authenticate
-from django.http.response import HttpResponse
+import json
+
 from http import HTTPStatus
+from django.conf import settings
+from django.http.response import JsonResponse, HttpResponse
+from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from django.contrib.auth.hashers import make_password
-import json
 
 
 def _create_jwt(user):
-    if user:
-        resp = json.dumps({'token': jwt.encode({
-            'role': settings.JWT_ROLE,
-            'userid': str(user.id)
-        }, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM).decode('utf-8')})
-    else:
-        resp = {'token': None}  # TODO maybe return jwt for anon user
-    return json.dumps(resp)
+    token = jwt.encode({
+        'role': settings.JWT_ROLE,
+        'userid': str(user.id)
+    }, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM).decode('utf-8')
+    return {'token': token}
 
 
 def prest_signin(request):
-    if request.methpd == 'POST':
-        username = request.POST.get('username')
-        password = request.POST.get('password')
-        user = authenticate(request, username=username, password=password)  # return user model if it exists
+    if request.method == 'POST':
+        try:
+            request_body = json.loads(request.body)
+        except:
+            return HttpResponse('Data not correctly', status=HTTPStatus.BAD_REQUEST)
+
+        username = request_body.get('username')
+        password = request_body.get('password')
+        if not username or not password:
+            return HttpResponse('\'username\' and \'password\' fields are required', 
+                                status=HTTPStatus.BAD_REQUEST)
+
+        user = authenticate(username=username, password=password)
         if user is not None:
-            return HttpResponse(_create_jwt(user))
+            return JsonResponse(_create_jwt(user), status=HTTPStatus.OK)
         else:
-            return HttpResponse(_create_jwt(user), status=HTTPStatus.UNAUTHORIZED)
+            return HttpResponse('', status=HTTPStatus.UNAUTHORIZED)
+
     return HttpResponse('', status=HTTPStatus.METHOD_NOT_ALLOWED)
 
 
 def prest_signup(request):
     if request.method == 'POST':
-        username = request.POST.get('username')
-        password = request.POST.get('password')
-        user = authenticate(username=username, password=password)
-        if not user:
+        try:
+            request_body = json.loads(request.body)
+        except:
+            return HttpResponse('Data not correctly', status=HTTPStatus.BAD_REQUEST)
+
+        username = request_body.get('username')
+        password = request_body.get('password')
+        if not username or not password:
+            return HttpResponse('\'username\' and \'password\' fields are required', 
+                                status=HTTPStatus.BAD_REQUEST)
+            
+        if User.objects.filter(username=username).exists():
+            return HttpResponse(f'User \'{username}\' already exists', status=HTTPStatus.BAD_REQUEST)
+        else:
             user = User(username=username, password=make_password(password))
             user.save()
-        else:
-            user = None
-        return HttpResponse(_create_jwt(user))
+            return HttpResponse('', status=HTTPStatus.CREATED)
+
     return HttpResponse('', status=HTTPStatus.METHOD_NOT_ALLOWED)
