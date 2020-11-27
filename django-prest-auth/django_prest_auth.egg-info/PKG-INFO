@@ -1,0 +1,52 @@
+Metadata-Version: 1.1
+Name: django-prest-auth
+Version: 0.1
+Summary: A Django app to make rest api using pREST.
+Home-page: https://www.example.com/
+Author: Your Name
+Author-email: yourname@example.com
+License: BSD-3-Clause  # Example license
+Description: =============
+        pREST API app
+        =============
+        
+        1. Add app to your INSTALLED_APPS setting like this::
+        
+            INSTALLED_APPS = [
+                ...
+                'django_rest_auth',
+            ]
+        
+        2. Include the polls URLconf in your project urls.py like this::
+        
+            path('signin/', prest_signin),
+            path('signup/', prest_signup),
+        
+        
+        3. In settings.py::
+            JWT_SECRET = 'super-secret-key'
+        
+            JWT_ALGORITHM = 'HS256'
+        
+            JWT_ROLE = DATABASES['default']['USER']
+        
+        3. Data that sends should include next fields::
+            username or email (as Login)
+        
+            password (as Password)
+        
+        4. From *signin* you will retrieve JWT, that will be used to have access for pREST service
+Platform: UNKNOWN
+Classifier: Environment :: Web Environment
+Classifier: Framework :: Django
+Classifier: Intended Audience :: Developers
+Classifier: License :: OSI Approved :: BSD License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3 :: Only
+Classifier: Programming Language :: Python :: 3.6
+Classifier: Programming Language :: Python :: 3.7
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Topic :: Internet :: WWW/HTTP
+Classifier: Topic :: Internet :: WWW/HTTP :: Dynamic Content

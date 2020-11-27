@@ -15,7 +15,7 @@ services:
       - 3000:3000
     environment:
       - PREST_PG_HOST=postgres
-      - PREST_PG_USER=test 
+      - PREST_PG_USER=test
       - PREST_PG_PASS=password 
       - PREST_PG_DATABASE=test
       - PREST_JWT_KEY=super-secret-key

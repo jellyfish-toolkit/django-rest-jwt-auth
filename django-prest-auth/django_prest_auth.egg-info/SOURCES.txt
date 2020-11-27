@@ -1,0 +1,10 @@
+README.rst
+setup.cfg
+setup.py
+django_prest_auth.egg-info/PKG-INFO
+django_prest_auth.egg-info/SOURCES.txt
+django_prest_auth.egg-info/dependency_links.txt
+django_prest_auth.egg-info/top_level.txt
+django_rest_auth/__init__.py
+django_rest_auth/apps.py
+django_rest_auth/views.py
