@@ -11,8 +11,7 @@ pREST API app
 
 2. Include the polls URLconf in your project urls.py like this::
 
-    path('signin/', prest_signin),
-    path('signup/', prest_signup),
+    path('path/', include('django_rest_auth.urls'))
 
 
 3. In settings.py::
