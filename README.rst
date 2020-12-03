@@ -1,17 +1,20 @@
-=============
-pREST API app
-=============
+====================
+django-rest-jwt-auth
+====================
 
 1. Add app to your INSTALLED_APPS setting like this::
 
     INSTALLED_APPS = [
         ...
-        'django_rest_auth',
+        'django_rest_jwt_auth',
     ]
 
 2. Include the polls URLconf in your project urls.py like this::
 
-    path('path/', include('django_rest_auth.urls'))
+    path('<path>/', include('django_rest_jwt_auth.urls'))
+        pathes::
+        /signin
+        /signup
 
 
 3. In settings.py::
