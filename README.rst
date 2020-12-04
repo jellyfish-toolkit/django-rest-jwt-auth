@@ -15,6 +15,7 @@ django-rest-jwt-auth
         pathes::
         /signin
         /signup
+        /refresh
 
 
 3. In settings.py::
@@ -24,9 +25,13 @@ django-rest-jwt-auth
 
     JWT_ROLE = DATABASES['default']['USER']
 
-3. Data that sends should include next fields::
+3. JSON data that sends, should include next fields::
     username or email (as Login)
 
     password (as Password)
 
-4. From *signin* you will retrieve JWT, that will be used to have access for pREST service
+4. From */signin* you will retrieve JWT, that will be used to have access
+
+   From */signup* you will retrieve JSON with created user object [except password]
+
+   From */refresh* you will retrieve new JWT
