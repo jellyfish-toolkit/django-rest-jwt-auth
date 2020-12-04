@@ -15,6 +15,12 @@ from datetime import datetime, timedelta
 from django.core.validators import validate_email
 from django.core.exceptions import ValidationError
 
+from django.core.mail import send_mail
+from smtplib import SMTPException as SMTPExc
+from cryptography.fernet import Fernet
+
+from django.urls import reverse
+
 
 def create_jwt(user):
     token = jwt.encode({
@@ -35,10 +41,31 @@ def refresh_jwt(token):
     except jwt.ExpiredSignatureError:
         return None
 
-def restore_password(email):
-    pass
+def encrypt_message(user_id):
+    data = json.dumps({'user_id': user_id}).encode()
+    fernet_encr = Fernet(settings.EMAIL_ENCRYPT_KEY)
+    return fernet_encr.encrypt(data).decode('utf-8')
 
-def prepare_response(status: int, token=None, error=None, user=None):
+def decrypt_message(encr_data):
+    fernet_decr = Fernet(settings.EMAIL_ENCRYPT_KEY)
+    decrypted = fernet_decr.decrypt(encr_data.encode())
+    return json.loads(decrypted)
+
+def restore_password(email, restore_url):
+    sms = {
+        'subject': 'Restoring password',
+        'message': restore_url,
+        'from_email': settings.FROM_EMAIL,
+        'recipient_list': [].append(email)
+    }
+    try:
+        result = send_mail(**sms)
+    except SMTPExc:
+        result = None
+
+    return result
+
+def prepare_response(status: int, token=None, error=None, user=None, message=None):
     resp = {'status': status}
     if error:
         resp['data'] = {'error': {'message': error}}
@@ -52,6 +79,8 @@ def prepare_response(status: int, token=None, error=None, user=None):
             resp['data'] = token
         elif isinstance(token, str):
             resp['data'] = {'token': token}
+    elif message:
+        resp['data'] = {'message': message}
     resp['data']['status'] = status
     return resp
 
@@ -70,7 +99,9 @@ def get_error(code):
         'unf': 'User not found',
 
         'pj': 'Only POST method, only JSON data',
-        'nat': 'No Autherization token'
+        'nat': 'No Autherization token',
+
+        'ens': 'Email wasnt sent'
     }
     return errors[code]
 
@@ -118,7 +149,7 @@ def signup(request):
         except ValidationError:
             return JsonResponse(**prepare_response(status=HTTPStatus.BAD_REQUEST, error=get_error('we')))
 
-        if (not username and not email_as_username):  # TODO fix needings in 'email_as_username'
+        if (not username and not email_as_username):
             return JsonResponse(**prepare_response(HTTPStatus.BAD_REQUEST, error=get_error('fr_r_c')))
         if (not username and email_as_username):
             username = email
@@ -139,7 +170,7 @@ def refresh(request):
     if request.method == 'POST':
         auth_header = request.headers.get('Authorization')
         if auth_header:
-            token = refresh_jwt(auth_header.replace('Bearer ', ''))
+            token = refresh_jwt(auth_header.replace('Bearer ', ''))  # TODO mb not neccesary
             if token:
                 return JsonResponse(**prepare_response(status=HTTPStatus.OK, token=token))
             else:
@@ -150,4 +181,16 @@ def refresh(request):
 
 @csrf_exempt
 def restore(request):
-    pass
+    if request.method == 'POST':
+        restoring_email = json.loads(request.body).get('restoring_email')
+        user = User.objects.get(email=restoring_email)
+        if user:
+            restoring_token = encrypt_message(user.id)
+            restoring_url = request.build_absolute_uri() + f'?restoring={restoring_token}'
+            # restoring_status = restore_password(restoring_email, restoring_url)  # TODO check email sending
+            restoring_status = True
+            if restoring_status:
+                return JsonResponse(**prepare_response(status=HTTPStatus.OK,
+                                                       message=f'Email has sent. The address is {restoring_email}'))
+            else:
+                return JsonResponse(**prepare_response(status=HTTPStatus.NOT_IMPLEMENTED, error=get_error('ens')))
