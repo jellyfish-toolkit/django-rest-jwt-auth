@@ -1,5 +1,6 @@
 import jwt
 import json
+from json import JSONDecodeError
 
 from http import HTTPStatus
 from django.conf import settings
@@ -41,15 +42,19 @@ def refresh_jwt(token):
     except jwt.ExpiredSignatureError:
         return None
 
-def encrypt_message(user_id):
-    data = json.dumps({'user_id': user_id}).encode()
+
+def encrypt_token():
+    data = json.dumps({'expired_time': (datetime.now() + timedelta(minutes=1)).timestamp()}).encode()
     fernet_encr = Fernet(settings.EMAIL_ENCRYPT_KEY)
     return fernet_encr.encrypt(data).decode('utf-8')
 
-def decrypt_message(encr_data):
+def decrypt_token(encr_data):
     fernet_decr = Fernet(settings.EMAIL_ENCRYPT_KEY)
-    decrypted = fernet_decr.decrypt(encr_data.encode())
-    return json.loads(decrypted)
+    try:
+        decrypted = fernet_decr.decrypt(encr_data.encode())
+    except JSONDecodeError:
+        return FalseFalse
+    return decrypted
 
 def restore_password(email, restore_url):
     sms = {
@@ -64,6 +69,7 @@ def restore_password(email, restore_url):
         result = None
 
     return result
+
 
 def prepare_response(status: int, token=None, error=None, user=None, message=None):
     resp = {'status': status}
@@ -87,8 +93,9 @@ def prepare_response(status: int, token=None, error=None, user=None, message=Non
 def get_error(code):
     errors = {
         'wd': 'Incorrect data format, JSON expected',
-        'wt': 'Wrong token',
+        'wt': 'Invalid token',
         'we': 'Invalid email',
+        'wd_f': 'Incorrect data fields',
 
         'fr': "'username' and 'password' fields are required",
         'fr_r': "'email' and 'password' fields are required",
@@ -101,9 +108,11 @@ def get_error(code):
         'pj': 'Only POST method, only JSON data',
         'nat': 'No Autherization token',
 
-        'ens': 'Email wasnt sent'
+        'ens': 'Email wasnt sent',
+        'te': 'Token expired'
     }
     return errors[code]
+
 
 @csrf_exempt
 def signin(request):
@@ -182,15 +191,43 @@ def refresh(request):
 @csrf_exempt
 def restore(request):
     if request.method == 'POST':
-        restoring_email = json.loads(request.body).get('restoring_email')
-        user = User.objects.get(email=restoring_email)
-        if user:
-            restoring_token = encrypt_message(user.id)
-            restoring_url = request.build_absolute_uri() + f'?restoring={restoring_token}'
-            # restoring_status = restore_password(restoring_email, restoring_url)  # TODO check email sending
-            restoring_status = True
-            if restoring_status:
-                return JsonResponse(**prepare_response(status=HTTPStatus.OK,
-                                                       message=f'Email has sent. The address is {restoring_email}'))
+        restoring_data = json.loads(request.body)
+
+        restoring_email = restoring_data.get('restoring_email')
+        restoring_token = restoring_data.get('restoring_token')
+        restoring_password = restoring_data.get('restoring_password')
+
+        if restoring_email and not (restoring_token or restoring_password):
+            user = User.objects.get(email=restoring_email)
+            if user:
+                restoring_token = encrypt_token()
+                # TODO create a field in User model for restoring token
+                # user.restoring_token = restoring_token
+                restoring_url = request.build_absolute_uri() + f'?restoring={restoring_token}'
+                # restoring_status = restore_password(restoring_email, restoring_url)  # TODO check email sending
+                restoring_status = True
+                if restoring_status:
+                    return JsonResponse(**prepare_response(status=HTTPStatus.OK,
+                                                           message=f'Email has sent. The address is {restoring_email}'))
+                else:
+                    return JsonResponse(**prepare_response(status=HTTPStatus.NOT_IMPLEMENTED, error=get_error('ens')))
             else:
-                return JsonResponse(**prepare_response(status=HTTPStatus.NOT_IMPLEMENTED, error=get_error('ens')))
+                return JsonResponse(**prepare_response(status=HTTPStatus.NOT_FOUND, error=get_error('unf')))
+        elif not restoring_email and (restoring_token and restoring_password):
+            decrypted = decrypt_token(restoring_token)
+            if decrypted:
+                if (decrypted['expired_time'] - datetime.now().timestamp()) > 0:
+                    # user = User.objects.get(restoring_token=restoring_token)  # TODO check
+                    user = True  # TODO drop
+                    if user:
+                        user.password = make_password(restoring_password)
+                        # user.restoring_token = None
+                        return JsonResponse(**prepare_response(status=HTTPStatus.OK, message='Password changed'))
+                else:
+                    return JsonResponse(**prepare_response(status=HTTPStatus.BAD_REQUEST, error=get_error('te')))
+            else:
+                return JsonResponse(**prepare_response(status=HTTPStatus.BAD_REQUEST, error=get_error('wt')))
+        else:
+            return JsonResponse(**prepare_response(status=HTTPStatus.BAD_REQUEST, error=get_error('wd_f')))
+    else:
+        return JsonResponse(**prepare_response(status=HTTPStatus.METHOD_NOT_ALLOWED, error=get_error('pj')))
