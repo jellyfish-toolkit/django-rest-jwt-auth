@@ -27,6 +27,7 @@ django-rest-jwt-auth
 
     For Restoring password::
 
+        EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
         FROM_EMAIL - from who is email
         EMAIL_ENCRYPT_KEY - key for encrypting link for restoring password. key must be 32 url-safe base64-encoded bytes.
         EMAIL_HOST_USER - username for SMTP
@@ -52,6 +53,17 @@ django-rest-jwt-auth
 
         Just have header Autherization with token
 
+    For restore::
+
+        For email::
+            Needed in 'restoring_email' field - send Email
+
+        For restoring::
+            Needs 'restoring_password' & 'restoring_token'
+            token - is restoring query parameter in email link that was sent.
+
+
+
 
 5. Data that retrievs::
     From */signup*::
@@ -66,6 +78,11 @@ django-rest-jwt-auth
     From */refresh*::
 
         New JWT. {"token":"<token>", "status": 200}
+
+    From */restore*::
+
+        If was or not email sent.
+        {'message', 'status'}
 
 6. Error cases::
 

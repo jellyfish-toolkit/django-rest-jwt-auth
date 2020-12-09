@@ -44,27 +44,25 @@ def refresh_jwt(token):
 
 
 def encrypt_token():
-    data = json.dumps({'expired_time': (datetime.now() + timedelta(minutes=1)).timestamp()}).encode()
+    data = json.dumps({'expired_time': (datetime.now() + timedelta(minutes=3000)).timestamp()}).encode()
     fernet_encr = Fernet(settings.EMAIL_ENCRYPT_KEY)
     return fernet_encr.encrypt(data).decode('utf-8')
 
 def decrypt_token(encr_data):
     fernet_decr = Fernet(settings.EMAIL_ENCRYPT_KEY)
     try:
-        decrypted = fernet_decr.decrypt(encr_data.encode())
+        decrypted = fernet_decr.decrypt(encr_data.encode()).decode('utf-8')
     except JSONDecodeError:
-        return FalseFalse
+        return False
     return decrypted
 
 def restore_password(email, restore_url):
-    sms = {
-        'subject': 'Restoring password',
-        'message': restore_url,
-        'from_email': settings.FROM_EMAIL,
-        'recipient_list': [].append(email)
-    }
+    from django.core import mail
+    connection = mail.get_connection()
+    connection.open()
     try:
-        result = send_mail(**sms)
+        result = send_mail('Restoring password', restore_url, settings.FROM_EMAIL,
+                           [email], connection=connection)
     except SMTPExc:
         result = None
 
@@ -201,11 +199,9 @@ def restore(request):
             user = User.objects.get(email=restoring_email)
             if user:
                 restoring_token = encrypt_token()
-                # TODO create a field in User model for restoring token
-                # user.restoring_token = restoring_token
+                user.restoring_token = restoring_token # TODO check
                 restoring_url = request.build_absolute_uri() + f'?restoring={restoring_token}'
-                # restoring_status = restore_password(restoring_email, restoring_url)  # TODO check email sending
-                restoring_status = True
+                restoring_status = restore_password(restoring_email, restoring_url)
                 if restoring_status:
                     return JsonResponse(**prepare_response(status=HTTPStatus.OK,
                                                            message=f'Email has sent. The address is {restoring_email}'))
@@ -213,20 +209,23 @@ def restore(request):
                     return JsonResponse(**prepare_response(status=HTTPStatus.NOT_IMPLEMENTED, error=get_error('ens')))
             else:
                 return JsonResponse(**prepare_response(status=HTTPStatus.NOT_FOUND, error=get_error('unf')))
+
         elif not restoring_email and (restoring_token and restoring_password):
             decrypted = decrypt_token(restoring_token)
             if decrypted:
+                decrypted = json.loads(decrypted)
                 if (decrypted['expired_time'] - datetime.now().timestamp()) > 0:
-                    # user = User.objects.get(restoring_token=restoring_token)  # TODO check
-                    user = True  # TODO drop
+                    user = User.objects.get(restoring_token=restoring_token)  # TODO check
                     if user:
                         user.password = make_password(restoring_password)
-                        # user.restoring_token = None
+                        user.restoring_token = None
+                        user.save()
                         return JsonResponse(**prepare_response(status=HTTPStatus.OK, message='Password changed'))
                 else:
                     return JsonResponse(**prepare_response(status=HTTPStatus.BAD_REQUEST, error=get_error('te')))
             else:
                 return JsonResponse(**prepare_response(status=HTTPStatus.BAD_REQUEST, error=get_error('wt')))
+
         else:
             return JsonResponse(**prepare_response(status=HTTPStatus.BAD_REQUEST, error=get_error('wd_f')))
     else:
