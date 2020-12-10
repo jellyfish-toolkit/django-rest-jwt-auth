@@ -12,10 +12,10 @@ django-rest-jwt-auth
 2. Include the polls URLconf in your project urls.py like this::
 
     path('<path>/', include('django_rest_jwt_auth.urls'))
-pathes::
-    /signin
-    /signup
-    /refresh
+        pathes::
+            /signin
+            /signup
+            /refresh
 
 
 3. In settings.py::
