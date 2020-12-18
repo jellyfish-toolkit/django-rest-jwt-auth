@@ -5,8 +5,7 @@ from json import JSONDecodeError
 from http import HTTPStatus
 from django.conf import settings
 from django.http.response import JsonResponse
-from django.contrib.auth import authenticate
-from django.contrib.auth.models import User
+from django.contrib.auth import authenticate, get_user_model
 from django.contrib.auth.hashers import make_password
 
 from datetime import datetime, timedelta
@@ -18,23 +17,20 @@ from django.core.mail import send_mail
 from smtplib import SMTPException as SMTPExc
 from cryptography.fernet import Fernet, InvalidToken
 
-from .models import UserProfile
-
-from enum import Enum
 
 
 def create_jwt(user):
     token = jwt.encode({
         'role': settings.JWT_ROLE,
         'userid': str(user.id),
-        'exp': (datetime.now() + timedelta(minutes=100)).timestamp(),
+        'exp': (datetime.now() + timedelta(minutes=settings.JWT_EXP)).timestamp(),
     }, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM).decode('utf-8')
     return {'token': token}
 
 def refresh_jwt(token):
     try:
         payload = jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM], verify=False)
-        user = User.objects.get(id=payload['userid'])
+        user = get_user_model().objects.get(id=payload['userid'])
         if not user:
             return None
         return create_jwt(user)
@@ -43,7 +39,8 @@ def refresh_jwt(token):
 
 
 def encrypt_token():
-    data = json.dumps({'expired_time': (datetime.now() + timedelta(minutes=300)).timestamp()}).encode()
+    data = json.dumps({'expired_time': (datetime.now() + timedelta(minutes=settings.EMAIL_TOKEN_EXP)).timestamp()
+                       }).encode()
     fernet_encr = Fernet(settings.EMAIL_ENCRYPT_KEY)
     return fernet_encr.encrypt(data).decode('utf-8')
 
@@ -74,7 +71,7 @@ def prepare_response(status: int, token=None, error=None, user=None, message=Non
         user_info = user.__dict__
         del user_info['_state']
         del user_info['password']
-        # TODO remove restoring_token field
+        del user_info['restoring_token']
         resp['data'] = {'user': user_info}
     elif token:
         if isinstance(token, dict):
@@ -155,14 +152,13 @@ def signup(request):
         if not username and email_as_username:
             username = email
 
-        if User.objects.filter(username=username).exists():
+        if get_user_model().objects.filter(username=username).exists():
             return JsonResponse(**prepare_response(HTTPStatus.BAD_REQUEST,  error=AuthError.USER_EXISTS))
-        elif User.objects.filter(email=email).exists():
+        elif get_user_model().objects.filter(email=email).exists():
             return JsonResponse(**prepare_response(HTTPStatus.BAD_REQUEST, error=AuthError.EMAIL_EXISTS))
         else:
-            user = User(username=username, password=make_password(password), email=email)
+            user = get_user_model()(username=username, password=make_password(password), email=email)
             user.save()
-            UserProfile.objects.create(user=user)
             return JsonResponse(**prepare_response(status=HTTPStatus.CREATED, user=user))
     return JsonResponse(**prepare_response(status=HTTPStatus.METHOD_NOT_ALLOWED, error=AuthError.POST_JSON))
 
@@ -210,11 +206,11 @@ def restore(request):
         restoring_password = restoring_data.get('new_password')
 
         if restoring_email and not (restoring_token or restoring_password):
-            user = User.objects.get(email=restoring_email)
+            user = get_user_model().objects.get(email=restoring_email)
             if user:
                 restoring_token = encrypt_token()
-                user.userprofile.restoring_token = restoring_token
-                user.userprofile.save()
+                user.restoring_token = restoring_token
+                user.save()
                 restoring_url = request.build_absolute_uri() + f'?restoring={restoring_token}'
                 restoring_status = restore_password(restoring_email, restoring_url)
                 if restoring_status:
@@ -231,20 +227,18 @@ def restore(request):
             if decrypted:
                 decrypted = json.loads(decrypted)
                 try:
-                    user_prof = UserProfile.objects.get(restoring_token=restoring_token)
+                    user = get_user_model().objects.get(restoring_token=restoring_token)
                 except ObjectDoesNotExist:
                     return JsonResponse(**prepare_response(status=HTTPStatus.NOT_FOUND, error=AuthError.USER_NOT_FOUND))
-                if user_prof:
+                if user:
                     if (decrypted['expired_time'] - datetime.now().timestamp()) > 0:
-                        user = user_prof.user
                         user.password = make_password(restoring_password)
-                        user_prof.restoring_token = None
+                        user.restoring_token = None
                         user.save()
-                        user_prof.save()
                         return JsonResponse(**prepare_response(status=HTTPStatus.OK, message='Password changed'))
                     else:
-                        user_prof.restoring_token = None
-                        user_prof.save()
+                        user.restoring_token = None
+                        user.save()
                         return JsonResponse(**prepare_response(status=HTTPStatus.BAD_REQUEST,
                                                                error=AuthError.TOKEN_EXPIRED))
                 else:

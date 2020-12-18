@@ -25,6 +25,8 @@ Paths are:
 `/signin`
 `/signup`
 `/restore`
+`/validation`
+`/refresh`
 
 
 3. In settings.py:
@@ -34,6 +36,7 @@ Paths are:
 JWT_SECRET = 'super-secret-key'
 JWT_ALGORITHM = 'HS256'
 JWT_ROLE = DATABASES['default']['USER']
+JWT_EXP = <amount in minutes>
 ```
 *Restoring password*
 ```python
@@ -46,6 +49,12 @@ EMAIL_HOST - host for SMTP
 EMAIL_PORT - port for SMTP
 EMAIL_USE_TLS - if TLS use
 EMAIL_USE_SSL - if SSL use
+EMAIL_TOKEN_EXP = <amount in minutes>
+```
+
+```python
+Set up User model
+AUTH_USER_MODEL = '<app>.<User model name>'
 ```
 4. Request examples
 Signup:
@@ -54,10 +63,12 @@ url - `/signup`
 
 ```js
 { 
-    "email": "...", // required
+    "email": "...", // if email_as_name is set up
     "password": "...", // required
     "username": "..." // or you can use boolean field email_as_name
 }
+
+"Either email or username must exists, not both"
 ```
 Signin:
 
@@ -75,7 +86,7 @@ Refresh:
 url - `/refresh`
 
 ```
-Authorization: Bearer ....
+Authorization: Bearer <token>
 ```
 
 Restore:
@@ -94,9 +105,16 @@ Restoring:
 
 ```js
 {
-    "email": "",
     "token": "",
     "new_password": ""
+}
+```
+
+Validation:
+
+```js
+{
+    "token": "..."
 }
 ```
 
@@ -138,6 +156,15 @@ JSON with created user object [except password]
     "status": 200
 }
 ```
+
+`/validation`
+```js
+{
+    "message": "Token will expired ...", 
+    "status": 200
+}
+```
+
 6. Error example
 
 ```js
