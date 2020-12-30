@@ -24,7 +24,7 @@ def create_jwt(user):
         'role': settings.JWT_ROLE,
         'userid': str(user.id),
         'exp': (datetime.now() + timedelta(minutes=settings.JWT_EXP)).timestamp(),
-    }, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM).decode('utf-8')
+    }, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
     return {'token': token}
 
 def refresh_jwt(token):
