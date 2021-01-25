@@ -18,31 +18,31 @@ from smtplib import SMTPException as SMTPExc
 from cryptography.fernet import Fernet, InvalidToken
 
 
-
 def create_jwt(user):
     token = jwt.encode({
         'role': settings.JWT_ROLE,
         'userid': str(user.id),
-        'exp': (datetime.now() + timedelta(minutes=settings.JWT_EXP)).timestamp(),
+        'exp': (datetime.now() + timedelta(minutes=settings.JWT_EXP if settings.JWT_EXP else 1440)).timestamp(),
     }, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
     return {'token': token}
 
+
 def refresh_jwt(token):
     try:
-        payload = jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM], verify=False)
+        payload = jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM],
+                             options={'verify_exp': False})
         user = get_user_model().objects.get(id=payload['userid'])
-        if not user:
-            return None
         return create_jwt(user)
-    except jwt.ExpiredSignatureError:
+    except ObjectDoesNotExist:
         return None
 
 
 def encrypt_token():
-    data = json.dumps({'expired_time': (datetime.now() + timedelta(minutes=settings.EMAIL_TOKEN_EXP)).timestamp()
-                       }).encode()
+    data = json.dumps({'expired_time': (datetime.now() + timedelta(
+        minutes=settings.EMAIL_TOKEN_EXP if settings.EMAIL_TOKEN_EXP else 1440)).timestamp()}).encode('utf-8')
     fernet_encr = Fernet(settings.EMAIL_ENCRYPT_KEY)
     return fernet_encr.encrypt(data).decode('utf-8')
+
 
 def decrypt_token(encr_data):
     fernet_decr = Fernet(settings.EMAIL_ENCRYPT_KEY)
@@ -51,6 +51,7 @@ def decrypt_token(encr_data):
     except InvalidToken:
         return False
     return decrypted
+
 
 def restore_password(email, restore_url):
     from django.core import mail
@@ -112,14 +113,14 @@ def signin(request):
         except JSONDecodeError:
             return JsonResponse(**prepare_response(HTTPStatus.BAD_REQUEST, error=AuthError.WRONG_DATA_FORMAT))
 
-        username = request_body.get('username')
-        password = request_body.get('password')
-
-        if not username or not password:
+        if not all(map(lambda x: x in request_body.keys(), ['username', 'password'])):
             return JsonResponse(**prepare_response(HTTPStatus.BAD_REQUEST, error=AuthError.FIELDS_REQUIRED))
 
+        username = request_body['username']
+        password = request_body['password']
+
         user = authenticate(username=username, password=password)
-        if user is not None:
+        if user:
             return JsonResponse(**prepare_response(status=HTTPStatus.OK, token=create_jwt(user)))
         else:
             return JsonResponse(**prepare_response(status=HTTPStatus.NOT_FOUND, error=AuthError.USER_NOT_FOUND))
@@ -171,7 +172,7 @@ def refresh(request):
             if token:
                 return JsonResponse(**prepare_response(status=HTTPStatus.OK, token=token))
             else:
-                return JsonResponse(**prepare_response(status=HTTPStatus.BAD_REQUEST, error=AuthError.WRONG_TOKEN))
+                return JsonResponse(**prepare_response(status=HTTPStatus.NOT_FOUND, error=AuthError.USER_NOT_FOUND))
         return JsonResponse(**prepare_response(status=HTTPStatus.BAD_REQUEST, error=AuthError.NO_AUTH_TOKEN))
     return JsonResponse(**prepare_response(status=HTTPStatus.METHOD_NOT_ALLOWED, error=AuthError.POST_JSON))
 
@@ -191,6 +192,8 @@ def validation(request):
                                                        message=f'Token will expire {datetime.fromtimestamp(exp_data)}'))
             except jwt.ExpiredSignatureError:
                 return JsonResponse(**prepare_response(status=HTTPStatus.OK, error=AuthError.TOKEN_EXPIRED))
+            except jwt.InvalidTokenError:
+                return JsonResponse(**prepare_response(status=HTTPStatus.UNAUTHORIZED, error=AuthError.WRONG_TOKEN))
         else:
             return JsonResponse(**prepare_response(status=HTTPStatus.BAD_REQUEST, error=AuthError.WRONG_DATA_FIELDS))
     else:
@@ -206,47 +209,58 @@ def restore(request):
         restoring_password = restoring_data.get('new_password')
 
         if restoring_email and not (restoring_token or restoring_password):
-            user = get_user_model().objects.get(email=restoring_email)
-            if user:
-                restoring_token = encrypt_token()
-                user.restoring_token = restoring_token
-                user.save()
-                restoring_url = request.build_absolute_uri() + f'?restoring={restoring_token}'
-                restoring_status = restore_password(restoring_email, restoring_url)
-                if restoring_status:
-                    return JsonResponse(**prepare_response(status=HTTPStatus.OK,
-                                                           message=f'Email has sent. The address is {restoring_email}'))
-                else:
-                    return JsonResponse(**prepare_response(status=HTTPStatus.NOT_IMPLEMENTED,
-                                                           error=AuthError.EMAIL_WASNT_SENT))
+            try:
+                user = get_user_model().objects.get(email=restoring_email)
+            except ObjectDoesNotExist:
+                return JsonResponse(**prepare_response(status=HTTPStatus.BAD_REQUEST, error=AuthError.USER_NOT_FOUND))
+            restoring_token = encrypt_token()
+            user.restoring_token = restoring_token
+            user.save()
+            restoring_url = request.build_absolute_uri() + f'?restoring={restoring_token}'
+            restoring_status = restore_password(restoring_email, restoring_url)
+            if restoring_status:
+                return JsonResponse(**prepare_response(status=HTTPStatus.OK,
+                                                       message=f'Email has sent. The address is {restoring_email}'))
             else:
-                return JsonResponse(**prepare_response(status=HTTPStatus.NOT_FOUND, error=AuthError.USER_NOT_FOUND))
-
+                return JsonResponse(**prepare_response(status=HTTPStatus.NOT_IMPLEMENTED,
+                                                       error=AuthError.EMAIL_WASNT_SENT))
         elif not restoring_email and (restoring_token and restoring_password):
             decrypted = decrypt_token(restoring_token)
-            if decrypted:
-                decrypted = json.loads(decrypted)
-                try:
-                    user = get_user_model().objects.get(restoring_token=restoring_token)
-                except ObjectDoesNotExist:
-                    return JsonResponse(**prepare_response(status=HTTPStatus.NOT_FOUND, error=AuthError.USER_NOT_FOUND))
-                if user:
-                    if (decrypted['expired_time'] - datetime.now().timestamp()) > 0:
-                        user.password = make_password(restoring_password)
-                        user.restoring_token = None
-                        user.save()
-                        return JsonResponse(**prepare_response(status=HTTPStatus.OK, message='Password changed'))
-                    else:
-                        user.restoring_token = None
-                        user.save()
-                        return JsonResponse(**prepare_response(status=HTTPStatus.BAD_REQUEST,
-                                                               error=AuthError.TOKEN_EXPIRED))
-                else:
-                    return JsonResponse(**prepare_response(status=HTTPStatus.NOT_FOUND, error=AuthError.USER_NOT_FOUND))
-            else:
+            if not decrypted:
                 return JsonResponse(**prepare_response(status=HTTPStatus.BAD_REQUEST, error=AuthError.WRONG_TOKEN))
-
+            try:
+                user = get_user_model().objects.get(restoring_token=restoring_token)
+            except ObjectDoesNotExist:
+                return JsonResponse(**prepare_response(status=HTTPStatus.NOT_FOUND, error=AuthError.USER_NOT_FOUND))
+            user.restoring_token = None
+            decrypted = json.loads(decrypted)
+            if (decrypted['expired_time'] - datetime.now().timestamp()) > 0:
+                user.password = make_password(restoring_password)
+                user.save()
+                return JsonResponse(**prepare_response(status=HTTPStatus.OK, message='Password changed'))
+            else:
+                user.save()
+                return JsonResponse(**prepare_response(status=HTTPStatus.BAD_REQUEST,
+                                                       error=AuthError.TOKEN_EXPIRED))
         else:
             return JsonResponse(**prepare_response(status=HTTPStatus.BAD_REQUEST, error=AuthError.WRONG_DATA_FIELDS))
     else:
         return JsonResponse(**prepare_response(status=HTTPStatus.METHOD_NOT_ALLOWED, error=AuthError.POST_JSON))
+
+
+def get_user_by_jwt(request):
+    if request.method == 'POST':
+        token = json.loads(request.body).get('token')
+        if not token:
+            return JsonResponse(**prepare_response(status=HTTPStatus.BAD_REQUEST, error=AuthError.NO_AUTH_TOKEN))
+        try:
+            token = jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
+            user = get_user_model().objects.get(id=token["userid"])
+            return JsonResponse(**prepare_response(status=HTTPStatus.OK, user=user))
+        except ObjectDoesNotExist:
+            return JsonResponse(**prepare_response(status=HTTPStatus.NOT_FOUND, error=AuthError.USER_NOT_FOUND))
+        except jwt.ExpiredSignatureError:
+            return JsonResponse(**prepare_response(status=HTTPStatus.BAD_REQUEST, error=AuthError.TOKEN_EXPIRED))
+        except jwt.InvalidTokenError:
+            return JsonResponse(**prepare_response(status=HTTPStatus.BAD_REQUEST, error=AuthError.WRONG_TOKEN))
+    return JsonResponse(**prepare_response(status=HTTPStatus.METHOD_NOT_ALLOWED, error=AuthError.POST_JSON))

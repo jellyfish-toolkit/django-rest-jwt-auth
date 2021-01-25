@@ -6,5 +6,6 @@ urlpatterns = [
     path('signup/', views.signup),
     path('refresh/', views.refresh),
     path('restore/', views.restore),
-    path('validation/', views.validation)
+    path('validation/', views.validation),
+    path('get_user/', views.get_user_by_jwt)
 ]
