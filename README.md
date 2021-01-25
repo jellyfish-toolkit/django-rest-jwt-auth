@@ -27,6 +27,7 @@ Paths are:
 `/restore`
 `/validation`
 `/refresh`
+`get_user/`
 
 
 3. In settings.py:
@@ -50,10 +51,18 @@ EMAIL_PORT - port for SMTP
 EMAIL_USE_TLS - if TLS use
 EMAIL_USE_SSL - if SSL use
 EMAIL_TOKEN_EXP = <amount in minutes>
+PATH_TO_RESTORE = '<schema>://<domain>/<path>' [frontend path]
 ```
 
 ```python
 Set up User model
+Package provide an AbstractUser for inheritance.
+You should either inherit Your user from it or create your own user model,
+provides *restoring_token* charfield with 145 characters lenght.
+You can get it in the next way::
+    from django_rest_jwt_auth import AuthAbstractUser
+    
+!Don't forget set up new setting'!
 AUTH_USER_MODEL = '<app>.<User model name>'
 ```
 4. Request examples
@@ -102,7 +111,7 @@ Send email:
 ```
 
 Restoring:
-
+Restoring token will be given as query param in URL in email msg.
 ```js
 {
     "token": "",
@@ -112,6 +121,13 @@ Restoring:
 
 Validation:
 
+```js
+{
+    "token": "..."
+}
+```
+
+Get User model:
 ```js
 {
     "token": "..."
