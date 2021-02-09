@@ -5,7 +5,7 @@ from json import JSONDecodeError
 
 import jwt
 from django.conf import settings
-from django.contrib.auth import authenticate, get_user_model
+from django.contrib.auth import authenticate
 from django.contrib.auth.hashers import make_password
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
@@ -14,7 +14,7 @@ from django.views.decorators.http import require_POST
 
 from .response_errors import AuthError
 from .utils import (create_jwt, prepare_response, refresh_jwt,
-                    restoring_with_email, restoring_with_token_and_password)
+                    restoring_with_email, restoring_with_token_and_password, USER_MODEL)
 
 
 @require_POST
@@ -63,12 +63,12 @@ def signup(request):
     if not username and email_as_username:
         username = email
 
-    if get_user_model().objects.filter(username=username).exists():
+    if USER_MODEL.objects.filter(username=username).exists():
         return JsonResponse(**prepare_response(HTTPStatus.BAD_REQUEST,  error=AuthError.USER_EXISTS))
-    elif get_user_model().objects.filter(email=email).exists():
+    elif USER_MODEL.objects.filter(email=email).exists():
         return JsonResponse(**prepare_response(HTTPStatus.BAD_REQUEST, error=AuthError.EMAIL_EXISTS))
     else:
-        user = get_user_model().objects.create(username=username, password=make_password(password), email=email)
+        user = USER_MODEL.objects.create(username=username, password=make_password(password), email=email)
         return JsonResponse(**prepare_response(status=HTTPStatus.CREATED, user=user))
 
 
@@ -128,9 +128,9 @@ def get_user_by_jwt(request):
         return JsonResponse(**prepare_response(status=HTTPStatus.BAD_REQUEST, error=AuthError.NO_AUTH_TOKEN))
     try:
         token = jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
-        user = get_user_model().objects.get(id=token["userid"])
+        user = USER_MODEL.objects.get(id=token["userid"])
         return JsonResponse(**prepare_response(status=HTTPStatus.OK, user=user))
-    except get_user_model().ObjectDoesNotExist:
+    except USER_MODEL.ObjectDoesNotExist:
         return JsonResponse(**prepare_response(status=HTTPStatus.NOT_FOUND, error=AuthError.USER_NOT_FOUND))
     except jwt.ExpiredSignatureError:
         return JsonResponse(**prepare_response(status=HTTPStatus.BAD_REQUEST, error=AuthError.TOKEN_EXPIRED))

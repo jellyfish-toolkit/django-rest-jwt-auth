@@ -13,6 +13,8 @@ from django.http.response import JsonResponse
 
 from .response_errors import AuthError
 
+USER_MODEL = get_user_model()
+
 
 def create_jwt(user):
     token = jwt.encode({
@@ -27,9 +29,9 @@ def refresh_jwt(token):
     try:
         payload = jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM],
                              options={'verify_exp': False})
-        user = get_user_model().objects.get(id=payload['userid'])
+        user = USER_MODEL.objects.get(id=payload['userid'])
         return create_jwt(user)
-    except get_user_model().ObjectDoesNotExist:
+    except USER_MODEL.ObjectDoesNotExist:
         return None
 
 
@@ -87,8 +89,8 @@ def prepare_response(status: int, token=None, error=None, user=None, message=Non
 
 def restoring_with_email(restoring_email):
     try:
-        user = get_user_model().objects.get(email=restoring_email)
-    except get_user_model().ObjectDoesNotExist:
+        user = USER_MODEL.objects.get(email=restoring_email)
+    except USER_MODEL.ObjectDoesNotExist:
         return JsonResponse(**prepare_response(status=HTTPStatus.BAD_REQUEST, error=AuthError.USER_NOT_FOUND))
     restoring_token = encrypt_token()
     user.restoring_token = restoring_token
@@ -107,8 +109,8 @@ def restoring_with_token_and_password(restoring_token, restoring_password):
     if not decrypted:
         return JsonResponse(**prepare_response(status=HTTPStatus.BAD_REQUEST, error=AuthError.WRONG_TOKEN))
     try:
-        user = get_user_model().objects.get(restoring_token=restoring_token)
-    except get_user_model().ObjectDoesNotExist:
+        user = USER_MODEL.objects.get(restoring_token=restoring_token)
+    except USER_MODEL.ObjectDoesNotExist:
         return JsonResponse(**prepare_response(status=HTTPStatus.NOT_FOUND, error=AuthError.USER_NOT_FOUND))
     user.restoring_token = None
     decrypted = json.loads(decrypted)
